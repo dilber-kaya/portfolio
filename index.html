@@ -1460,7 +1460,19 @@ function interact(it){
     default:{const c=CARDS[it.id];if(c)openCard(c[0],c[1],c[2]);}
   }
 }
-function near(){let best=null,bd=15;for(const it of ITEMS){const d=Math.hypot(P.x-it.at[0],P.y-it.at[1]);if(d<bd){bd=d;best=it;}}return best;}
+// Interaction range: measured to each item's outline (wall items reach down to the floor line), same room only, items in front of her win.
+const NEAR_RANGE=14;
+function itemZone(it){let [x,y,w,h]=it.rect;const r=roomAt(it.at[0],it.at[1]);if(r!=='garden'){const fy=ROOMS[r].y+48;if(y+h<fy+4)h=fy+4-y;}return [x,y,w,h];}
+function near(){const rm=roomAt(P.x,P.y),cx=P.x,cy=P.y-7,f=P.dir==='left'?[-1,0]:P.dir==='right'?[1,0]:P.dir==='up'?[0,-1]:[0,1];let best=null,bs=1e9;
+  for(const it of ITEMS){if(it.at[0]<-500)continue;const dOld=Math.hypot(P.x-it.at[0],P.y-it.at[1]);if(roomAt(it.at[0],it.at[1])!==rm&&dOld>=15)continue;
+    const [x,y,w,h]=itemZone(it);const gx=Math.max(x-(P.x+5),0,(P.x-5)-(x+w)),gy=Math.max(y-P.y,0,(P.y-16)-(y+h)),gap=Math.hypot(gx,gy);
+    if(gap>NEAR_RANGE&&dOld>=15)continue;
+    const nx=Math.max(x,Math.min(cx,x+w)),ny=Math.max(y,Math.min(cy,y+h)),dx=nx-cx,dy=ny-cy,dl=Math.hypot(dx,dy),front=dl<4||(dx*f[0]+dy*f[1])/dl>0.35;
+    const perp=f[0]?Math.abs((y+h/2)-cy):Math.abs((x+w/2)-cx),score=Math.min(gap,dOld)+(front?0:100)+Math.min(perp,40)*0.12;
+    if(score<bs){bs=score;best=it;}}
+  return best;}
+const WALK_FIRST={armchair:1,computer:1,cushion:1,sofa:1,swing:1,lounge:1,gbench:1,mat:1};
+function activateNear(it){if(WALK_FIRST[it.id]&&Math.hypot(P.x-it.at[0],P.y-it.at[1])>=15){goTo(it);return;}P.dir=faceDir(it);interact(it);}
 function faceDir(it){if(it.id==='cactus')return 'left';const [rx,ry,rw,rh]=it.rect,cx=rx+rw/2,cy=ry+rh/2;return Math.abs(cx-P.x)>Math.abs(cy-P.y)*1.2?(cx<P.x?'left':'right'):(cy<P.y?'up':'down');}
 function goTo(it){if((P.busyUntil||0)>now)return;if(P.yoga)stopBreath(true);if(P.sit)standUp();pendingItem=it;target=[it.at[0],it.at[1],now];path=findPath(it.at[0],it.at[1]);if(!path.length){pendingItem=null;target=null;arrive(it);}}
 function arrive(it){target=null;if(!it)return;P.dir=faceDir(it);interact(it);}
@@ -1476,7 +1488,7 @@ addEventListener('keydown',e=>{
   const ae=document.activeElement,onStage=ae===stage||ae===document.body||!ae;
   if(KM[e.code]&&stageVisible()&&(e.code.startsWith('Arrow')||onStage)){keys[KM[e.code]]=true;e.preventDefault();}
   if(e.code==='KeyM'&&onStage&&stageVisible())toggleView();
-  if((e.code==='KeyE'||((e.code==='Space'||e.code==='Enter')&&onStage))&&stageVisible()){const it=near();if(it&&!P.sit&&!P.yoga){e.preventDefault();P.dir=faceDir(it);interact(it);}}
+  if((e.code==='KeyE'||((e.code==='Space'||e.code==='Enter')&&onStage))&&stageVisible()){const it=near();if(it&&!P.sit&&!P.yoga){e.preventDefault();activateNear(it);}}
 });
 addEventListener('keyup',e=>{if(KM[e.code])keys[KM[e.code]]=false;});
 addEventListener('blur',()=>{keys={};});
@@ -1491,7 +1503,7 @@ cvs.addEventListener('click',e=>{if(paused)return;const [wx,wy]=toWorld(e);
   if(P.yoga)stopBreath(true);if(P.sit)standUp();pendingItem=null;path=findPath(wx,wy);target=path.length?[path[path.length-1][0],path[path.length-1][1],now]:null;});
 cvs.addEventListener('mousemove',e=>{const [wx,wy]=toWorld(e);hoverItem=hit(wx,wy)||null;cvs.style.cursor=hoverItem?'pointer':'default';});
 cvs.addEventListener('mouseleave',()=>{hoverItem=null;});
-promptEl.addEventListener('click',()=>{const it=near();if(it){P.dir=faceDir(it);interact(it);}});
+promptEl.addEventListener('click',()=>{const it=near();if(it){activateNear(it);}});
 document.querySelectorAll('[data-go]').forEach(btn=>btn.addEventListener('click',()=>{
   stage.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});overview=false;viewBtn.textContent='Whole house';goTo(byId[btn.dataset.go]);}));
 function toggleView(){overview=!overview;viewBtn.textContent=overview?'Follow me':'Whole house';}
